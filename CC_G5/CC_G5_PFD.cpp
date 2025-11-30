@@ -77,7 +77,7 @@ CC_G5_PFD::CC_G5_PFD()
 {
 }
 
-// Read data from RP2040
+// Read data from encoder and buttons
 void CC_G5_PFD::read_rp2040_data()
 {
     static bool encButtonPrev   = false;
@@ -85,6 +85,11 @@ void CC_G5_PFD::read_rp2040_data()
     static int  encCount        = 0;
 
     int8_t delta, enc_btn, ext_btn;
+
+#ifdef USE_GUITION_SCREEN
+    // Update GPIO hardware state
+    g5Hardware.update();
+#endif
 
     // Read data from hardware interface
     if (g5Hardware.readEncoderData(delta, enc_btn, ext_btn)) {
@@ -133,7 +138,7 @@ void CC_G5_PFD::begin()
 
     lcd.setColorDepth(8);
     lcd.init();
-   // lcd.setBrightness(g5State.lcdBrightness);
+    // lcd.setBrightness(g5State.lcdBrightness);
     //    lcd.initDMA();
 
     //    Serial.printf("Chip revision %d\n", ESP.getChipRevision());
@@ -144,36 +149,25 @@ void CC_G5_PFD::begin()
 
     pfdMenu.initializeMenu();
 
+    // Configure hardware interface
+#ifdef USE_GUITION_SCREEN
+    ESP_LOGI(TAG_I2C, "Setting up GPIO encoder interface");
+    // Initialize GPIO-based encoder and buttons
+    g5Hardware.init();
+#else
     // Configure i2c pins
-    //    Serial.printf("Menu initialized.\n");
-
     pinMode(INT_PIN, INPUT_PULLUP);
-    //    Serial.printf("Input pin setup.\n");
-    //    Serial.flush();
 
     // Configure I2C master
     if (!Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 40000)) {
-        //        Serial.printf("Wire begin fail.\n");
         ESP_LOGE(TAG_I2C, "i2c setup failed");
     } else {
-        //        Serial.printf("Wire begin ok.\n");
         ESP_LOGI(TAG_I2C, "i2c setup successful");
     }
 
-    //    Serial.printf("Attaching interrupts.\n");
-    // Test the bus.
-    // ESP_LOGD(TAG_I2C, "Scanning I2C bus...");
-    // for (byte addr = 1; addr < 127; addr++) {
-    //     Wire.beginTransmission(addr);
-    //     byte error = Wire.endTransmission();
-    //     if (error == 0) {
-    //        ESP_LOGD(TAG_I2C, "I2C device found at address 0x%02X", addr);
-    //     }
-    // }
-    // ESP_LOGD(TAG_I2C, "I2C scan complete");
-
     // Configure interrupt handler with lambda
     attachInterrupt(digitalPinToInterrupt(INT_PIN), []() { g5Hardware.setDataAvailable(); }, FALLING);
+#endif
 
 #ifdef USE_GUITION_SCREEN
     lcd.setRotation(3); // Puts the USB jack at the bottom on Guition screen.
@@ -284,8 +278,8 @@ void CC_G5_PFD::setupSprites()
     altBug.createSprite(HEADINGBUG_IMG_WIDTH, HEADINGBUG_IMG_HEIGHT);
     // altBug.pushImage(0,0,HEADINGBUG_IMG_WIDTH, HEADINGBUG_IMG_HEIGHT, HEADINGBOX_IMG_DATA);
     altBug.setBuffer(const_cast<std::uint16_t *>(HEADINGBUG_IMG_DATA), HEADINGBUG_IMG_WIDTH, HEADINGBUG_IMG_HEIGHT, 16);
-    altBug.setPivot(HEADINGBOX_IMG_WIDTH / 2, HEADINGBUG_IMG_HEIGHT / 2);  // THIS IS WRONG CONSTANT! but i don't feel like redoing the functions that depend on the error.
-    
+    altBug.setPivot(HEADINGBOX_IMG_WIDTH / 2, HEADINGBUG_IMG_HEIGHT / 2); // THIS IS WRONG CONSTANT! but i don't feel like redoing the functions that depend on the error.
+
     // altBugBitmap.setColorDepth(1);
     // altBugBitmap.createSprite(HEADINGBUG_1BIT_IMG_WIDTH, HEADINGBUG_1BIT_IMG_HEIGHT);
     // altBugBitmap.setBuffer(const_cast<std::uint8_t *>(HEADINGBUG_1BIT_IMG_DATA), HEADINGBUG_1BIT_IMG_WIDTH, HEADINGBUG_1BIT_IMG_HEIGHT);
@@ -1431,7 +1425,7 @@ void CC_G5_PFD::drawKohlsman()
         char buf[8];
         sprintf(buf, "%.0f", g5State.kohlsman);
         kohlsBox.setTextSize(0.9);
-        kohlsBox.drawString(buf, 90, 23);   // units in hPa
+        kohlsBox.drawString(buf, 90, 23); // units in hPa
     } else {
 
         kohlsBox.drawString("i", 119, 13);
@@ -1475,88 +1469,88 @@ void CC_G5_PFD::drawAltTarget()
     AltAlertState previousState = altAlertState;
 
     switch (altAlertState) {
-        case ALT_IDLE:
-            if (altDiff <= ALT_ALERT_1000_THRESHOLD) {
-                altAlertState = ALT_WITHIN_1000;
-            }
-            break;
+    case ALT_IDLE:
+        if (altDiff <= ALT_ALERT_1000_THRESHOLD) {
+            altAlertState = ALT_WITHIN_1000;
+        }
+        break;
 
-        case ALT_WITHIN_1000:
-            if (altDiff > ALT_ALERT_1000_THRESHOLD) {
-                altAlertState = ALT_IDLE;
-            } else if (altDiff <= ALT_ALERT_200_THRESHOLD) {
-                altAlertState = ALT_WITHIN_200;
-            }
-            break;
+    case ALT_WITHIN_1000:
+        if (altDiff > ALT_ALERT_1000_THRESHOLD) {
+            altAlertState = ALT_IDLE;
+        } else if (altDiff <= ALT_ALERT_200_THRESHOLD) {
+            altAlertState = ALT_WITHIN_200;
+        }
+        break;
 
-        case ALT_WITHIN_200:
-            if (altDiff > ALT_DEVIATION_THRESHOLD) {
-                // Left 200' band before capturing - return to appropriate state
-                altAlertState = (altDiff > ALT_ALERT_1000_THRESHOLD) ? ALT_IDLE : ALT_WITHIN_1000;
-            } else if (altDiff <= ALT_CAPTURE_THRESHOLD) {
-                altAlertState = ALT_CAPTURED;
-            }
-            break;
+    case ALT_WITHIN_200:
+        if (altDiff > ALT_DEVIATION_THRESHOLD) {
+            // Left 200' band before capturing - return to appropriate state
+            altAlertState = (altDiff > ALT_ALERT_1000_THRESHOLD) ? ALT_IDLE : ALT_WITHIN_1000;
+        } else if (altDiff <= ALT_CAPTURE_THRESHOLD) {
+            altAlertState = ALT_CAPTURED;
+        }
+        break;
 
-        case ALT_CAPTURED:
-            if (altDiff > ALT_DEVIATION_THRESHOLD) {
-                // Deviated from captured altitude
-                altAlertState = ALT_DEVIATED;
-            }
-            // Stay in CAPTURED even if we drift within 100-200' range
-            break;
+    case ALT_CAPTURED:
+        if (altDiff > ALT_DEVIATION_THRESHOLD) {
+            // Deviated from captured altitude
+            altAlertState = ALT_DEVIATED;
+        }
+        // Stay in CAPTURED even if we drift within 100-200' range
+        break;
 
-        case ALT_DEVIATED:
-            if (altDiff <= ALT_DEVIATION_THRESHOLD) {
-                // Returned within deviation band - recaptured
-                altAlertState = (altDiff <= ALT_CAPTURE_THRESHOLD) ? ALT_CAPTURED : ALT_WITHIN_200;
-            }
-            break;
+    case ALT_DEVIATED:
+        if (altDiff <= ALT_DEVIATION_THRESHOLD) {
+            // Returned within deviation band - recaptured
+            altAlertState = (altDiff <= ALT_CAPTURE_THRESHOLD) ? ALT_CAPTURED : ALT_WITHIN_200;
+        }
+        break;
     }
 
     // Trigger alerts on state transitions
     if (altAlertState != previousState) {
         switch (altAlertState) {
-            case ALT_WITHIN_1000:
-                // Crossed 1000' threshold - flash cyan
+        case ALT_WITHIN_1000:
+            // Crossed 1000' threshold - flash cyan
+            altAlertActive = true;
+            alertStartTime = millis();
+            alertColor     = TFT_CYAN;
+            break;
+
+        case ALT_WITHIN_200:
+            if (previousState == ALT_WITHIN_1000) {
+                // Crossed 200' threshold - flash cyan
                 altAlertActive = true;
                 alertStartTime = millis();
                 alertColor     = TFT_CYAN;
-                break;
-
-            case ALT_WITHIN_200:
-                if (previousState == ALT_WITHIN_1000) {
-                    // Crossed 200' threshold - flash cyan
-                    altAlertActive = true;
-                    alertStartTime = millis();
-                    alertColor     = TFT_CYAN;
-                } else if (previousState == ALT_DEVIATED) {
-                    // Returned within 200' after deviation - flash cyan
-                    altAlertActive = true;
-                    alertStartTime = millis();
-                    alertColor     = TFT_CYAN;
-                }
-                break;
-
-            case ALT_CAPTURED:
-                if (previousState == ALT_DEVIATED) {
-                    // Returned to capture after deviation - flash cyan
-                    altAlertActive = true;
-                    alertStartTime = millis();
-                    alertColor     = TFT_CYAN;
-                }
-                // No alert when first capturing from WITHIN_200
-                break;
-
-            case ALT_DEVIATED:
-                // Deviated from captured altitude - flash yellow
+            } else if (previousState == ALT_DEVIATED) {
+                // Returned within 200' after deviation - flash cyan
                 altAlertActive = true;
                 alertStartTime = millis();
-                alertColor     = TFT_YELLOW;
-                break;
+                alertColor     = TFT_CYAN;
+            }
+            break;
 
-            default:
-                break;
+        case ALT_CAPTURED:
+            if (previousState == ALT_DEVIATED) {
+                // Returned to capture after deviation - flash cyan
+                altAlertActive = true;
+                alertStartTime = millis();
+                alertColor     = TFT_CYAN;
+            }
+            // No alert when first capturing from WITHIN_200
+            break;
+
+        case ALT_DEVIATED:
+            // Deviated from captured altitude - flash yellow
+            altAlertActive = true;
+            alertStartTime = millis();
+            alertColor     = TFT_YELLOW;
+            break;
+
+        default:
+            break;
         }
     }
 
@@ -2123,10 +2117,8 @@ void CC_G5_PFD::update()
     unsigned long        startDraw       = millis();
     char                 buf[128];
 
-    // Check if data is available from RP2040
-    if (g5Hardware.hasData()) {
-        read_rp2040_data();
-    }
+    // Read encoder and button data
+    read_rp2040_data();
 
     drawAttitude();
     drawSpeedTape();

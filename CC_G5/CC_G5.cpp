@@ -66,7 +66,7 @@ CC_G5_HSI::CC_G5_HSI()
 {
 }
 
-// Read data from RP2040
+// Read data from encoder and buttons
 void CC_G5_HSI::read_rp2040_data()
 {
     static bool encButtonPrev   = false;
@@ -74,6 +74,11 @@ void CC_G5_HSI::read_rp2040_data()
     static int  encCount        = 0;
 
     int8_t delta, enc_btn, ext_btn;
+
+#ifdef USE_GUITION_SCREEN
+    // Update GPIO hardware state
+    g5Hardware.update();
+#endif
 
     // Read data from hardware interface
     if (g5Hardware.readEncoderData(delta, enc_btn, ext_btn)) {
@@ -132,6 +137,11 @@ void CC_G5_HSI::begin()
 
     hsiMenu.initializeMenu();
 
+#ifdef USE_GUITION_SCREEN
+    ESP_LOGI(TAG_I2C, "Setting up GPIO encoder interface");
+    // Initialize GPIO-based encoder and buttons
+    g5Hardware.init();
+#else
     ESP_LOGI(TAG_I2C, "Setting up i2c");
     // Configure i2c pins
     pinMode(INT_PIN, INPUT_PULLUP);
@@ -143,19 +153,9 @@ void CC_G5_HSI::begin()
         ESP_LOGI(TAG_I2C, "i2c setup successful");
     }
 
-    // Test the bus.
-    // ESP_LOGD(TAG_I2C, "Scanning I2C bus...");
-    // for (byte addr = 1; addr < 127; addr++) {
-    //     Wire.beginTransmission(addr);
-    //     byte error = Wire.endTransmission();
-    //     if (error == 0) {
-    //        ESP_LOGD(TAG_I2C, "I2C device found at address 0x%02X", addr);
-    //     }
-    // }
-    // ESP_LOGD(TAG_I2C, "I2C scan complete");
-
     // Configure interrupt handler with lambda
     attachInterrupt(digitalPinToInterrupt(INT_PIN), []() { g5Hardware.setDataAvailable(); }, FALLING);
+#endif
 
     lcd.fillScreen(TFT_BACKGROUND_COLOR);
     forceRedraw = true;
@@ -754,10 +754,8 @@ void CC_G5_HSI::update()
     unsigned long        now             = millis();
     char                 buf[16];
 
-    // Check if data is available from RP2040
-    if (g5Hardware.hasData()) {
-        read_rp2040_data();
-    }
+    // Read encoder and button data
+    read_rp2040_data();
 
     updateInputValues();
 

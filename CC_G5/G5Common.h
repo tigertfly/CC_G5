@@ -23,17 +23,20 @@ static const char *TAG_SPRITES = "CC_G5_SPRITES";
 #include "commandmessenger.h"
 #include <Wire.h>
 
+#ifdef USE_GUITION_SCREEN
+#include <ESP32Encoder.h>
+#endif
 
-#define CC_G5_SETTINGS_OFFSET 2048     // Well past MF config end (59 + 1496 = 1555)
-#define SETTINGS_VERSION 2
-#define STATE_VERSION 1 // For the save state when switching between pfd and hsi
+#define CC_G5_SETTINGS_OFFSET 2048 // Well past MF config end (59 + 1496 = 1555)
+#define SETTINGS_VERSION      2
+#define STATE_VERSION         1 // For the save state when switching between pfd and hsi
 
-#define TFT_MAIN_TRANSPARENT  TFT_PINK // Just pick a color not used in either display
+#define TFT_MAIN_TRANSPARENT TFT_PINK // Just pick a color not used in either display
 
 struct CC_G5_Settings {
-    int     version               = SETTINGS_VERSION;
-    uint8_t bearingPointer1Source = 0; // 0: Off, 1: GPS, 2: Nav1, 3: Nav2, 4: ADF
-    uint8_t bearingPointer2Source = 0; // 0: Off, 1: GPS, 2: Nav1, 3: Nav2, 4: ADF
+    int      version               = SETTINGS_VERSION;
+    uint8_t  bearingPointer1Source = 0; // 0: Off, 1: GPS, 2: Nav1, 3: Nav2, 4: ADF
+    uint8_t  bearingPointer2Source = 0; // 0: Off, 1: GPS, 2: Nav1, 3: Nav2, 4: ADF
     uint16_t Vr                    = 60;
     uint16_t Vx                    = 75;
     uint16_t Vy                    = 91;
@@ -44,13 +47,13 @@ struct CC_G5_Settings {
     uint16_t Vg                    = 80;
     uint16_t Vno                   = 145;
     uint16_t Vne                   = 182;
-    uint8_t pitchScale            = 15;
-    uint8_t speedScale            = 10;
-    uint8_t baroUnit              = 0; // 0: inHg, 1: kPa, 3: mmHg
-    uint8_t speedUnits            = 0; // 0:knot 1:mph 2:kph
-    uint8_t distanceUnits         = 0; // 0: nm, 1: miles, 2:km
-    uint8_t tempUnits             = 0; // 0: F, 1: C
-    uint8_t deviceType = CUSTOM_HSI_DEVICE;
+    uint8_t  pitchScale            = 15;
+    uint8_t  speedScale            = 10;
+    uint8_t  baroUnit              = 0; // 0: inHg, 1: kPa, 3: mmHg
+    uint8_t  speedUnits            = 0; // 0:knot 1:mph 2:kph
+    uint8_t  distanceUnits         = 0; // 0: nm, 1: miles, 2:km
+    uint8_t  tempUnits             = 0; // 0: F, 1: C
+    uint8_t  deviceType            = CUSTOM_HSI_DEVICE;
 };
 
 extern CC_G5_Settings g5Settings;
@@ -58,84 +61,84 @@ extern CC_G5_Settings g5Settings;
 // Shared flight state - accessible by both HSI and PFD
 struct G5State {
 
-    int   lcdBrightness     = 255;
+    int lcdBrightness = 255;
 
     // Heading and orientation
-    float rawHeadingAngle   = 0.0f;
-    float headingAngle      = 0.0f;
-    int   headingBugAngle   = 0;
-    float groundTrack       = 0.0f;
+    float rawHeadingAngle = 0.0f;
+    float headingAngle    = 0.0f;
+    int   headingBugAngle = 0;
+    float groundTrack     = 0.0f;
 
     // Attitude (PFD)
-    float rawBankAngle      = 0.0f;
-    float bankAngle         = 0.0f;
-    float rawPitchAngle     = 0.0f;
-    float pitchAngle        = 0.0f;
-    float rawBallPos        = 0.0f;
-    float ballPos           = 0.0f;
-    float turnRate          = 0.0f;
+    float rawBankAngle  = 0.0f;
+    float bankAngle     = 0.0f;
+    float rawPitchAngle = 0.0f;
+    float pitchAngle    = 0.0f;
+    float rawBallPos    = 0.0f;
+    float ballPos       = 0.0f;
+    float turnRate      = 0.0f;
 
     // Speeds
-    float rawAirspeed       = 0.0f;
-    float airspeed          = 0.0f;
-    float trueAirspeed      = 0.0f;
-    int   groundSpeed       = 0;
+    float rawAirspeed  = 0.0f;
+    float airspeed     = 0.0f;
+    float trueAirspeed = 0.0f;
+    int   groundSpeed  = 0;
 
     // Altitude
-    int   rawAltitude       = 0;
-    int   altitude          = 0;
-    int   rawVerticalSpeed  = 0;
-    int   verticalSpeed     = 0;
-    int   targetAltitude    = 0;
-    int   densityAltitude   = 1200;
-    float kohlsman          = 29.92f;
+    int   rawAltitude      = 0;
+    int   altitude         = 0;
+    int   rawVerticalSpeed = 0;
+    int   verticalSpeed    = 0;
+    int   targetAltitude   = 0;
+    int   densityAltitude  = 1200;
+    float kohlsman         = 29.92f;
 
     // Navigation source and mode
-    int   navSource         = 1;      // 1=GPS, 0=NAV
-    int   gpsApproachType   = 0;      // Approach type enum
-    int   navCDILabelIndex  = 0;      // GPS:0, LOC1:1, VOR1:2, etc.
-    int   cdiScaleLabel     = 0;
-    bool  terminalModeActive = true;
+    int  navSource          = 1; // 1=GPS, 0=NAV
+    int  gpsApproachType    = 0; // Approach type enum
+    int  navCDILabelIndex   = 0; // GPS:0, LOC1:1, VOR1:2, etc.
+    int  cdiScaleLabel      = 0;
+    bool terminalModeActive = true;
 
     // CDI (Course Deviation Indicator)
-    int   cdiDirection      = 0;      // HSI needle direction
-    float rawCdiOffset      = 0.0f;
-    float cdiOffset         = 0.0f;
-    int   cdiNeedleValid    = 1;
-    int   cdiToFrom         = 0;      // 0=off, 1=to, 2=from
+    int   cdiDirection   = 0; // HSI needle direction
+    float rawCdiOffset   = 0.0f;
+    float cdiOffset      = 0.0f;
+    int   cdiNeedleValid = 1;
+    int   cdiToFrom      = 0; // 0=off, 1=to, 2=from
 
     // Glide slope
-    float rawGsiNeedle      = 0.0f;
-    float gsiNeedle         = 0.0f;
-    int   gsiNeedleValid    = 1;
+    float rawGsiNeedle   = 0.0f;
+    float gsiNeedle      = 0.0f;
+    int   gsiNeedleValid = 1;
 
     // Desired track / Course to steer (shared between HSI and PFD)
-    float desiredTrack      = 0.0f;   // GPS course to steer / DTK (used by both HSI and PFD)
+    float desiredTrack      = 0.0f; // GPS course to steer / DTK (used by both HSI and PFD)
     int   desiredTrackValid = 0;
-    float navCourse         = 0.0f;   // NAV OBS course
+    float navCourse         = 0.0f; // NAV OBS course
 
     // OBS mode
-    int   obsModeOn         = 0;
-    float obsAngle          = 0.0f;
+    int   obsModeOn = 0;
+    float obsAngle  = 0.0f;
 
     // Distance
-    float distNextWaypoint  = 0.0f;
-    int   gpsEteWp          = 0;
+    float distNextWaypoint = 0.0f;
+    int   gpsEteWp         = 0;
 
     // Bearing pointers (HSI)
     float bearingAngleGPS   = 0.0f;
     float bearingAngleVLOC1 = 0.0f;
     float bearingAngleVLOC2 = 0.0f;
     float bearingAngleADF   = 0.0f;
-    int   vloc1Type         = 0;      // LOC:1, VOR:2, DME:3, ADF:4
+    int   vloc1Type         = 0; // LOC:1, VOR:2, DME:3, ADF:4
     int   vloc2Type         = 0;
     bool  adfValid          = false;
 
     // Wind (HSI)
-    float rawWindDir        = 0.0f;
-    float windDir           = 0.0f;
-    float rawWindSpeed      = 0.0f;
-    float windSpeed         = 0.0f;
+    float rawWindDir   = 0.0f;
+    float windDir      = 0.0f;
+    float rawWindSpeed = 0.0f;
+    float windSpeed    = 0.0f;
 
     // Flight director (PFD)
     int   flightDirectorActive = 0;
@@ -143,18 +146,18 @@ struct G5State {
     float flightDirectorBank   = 0.0f;
 
     // Autopilot (PFD)
-    int   apActive          = 0;
-    int   apLMode           = 0;
-    int   apVMode           = 0;
-    int   apLArmedMode      = 0;
-    int   apVArmedMode      = 0;
-    int   apYawDamper       = 0;
-    int   apTargetSpeed     = 0;
-    int   apAltCaptured     = 0;
-    int   apTargetVS        = 0;
+    int apActive      = 0;
+    int apLMode       = 0;
+    int apVMode       = 0;
+    int apLArmedMode  = 0;
+    int apVArmedMode  = 0;
+    int apYawDamper   = 0;
+    int apTargetSpeed = 0;
+    int apAltCaptured = 0;
+    int apTargetVS    = 0;
 
     // Other
-    int   oat               = 15;     // Outside air temp
+    int oat = 15; // Outside air temp
 };
 
 extern G5State g5State;
@@ -162,9 +165,9 @@ extern G5State g5State;
 // Settings definition struct
 struct SettingDef {
     const char *name;
-    uint16_t    *valuePtr;
-    uint16_t     minVal;
-    uint16_t     maxVal;
+    uint16_t   *valuePtr;
+    uint16_t    minVal;
+    uint16_t    maxVal;
 };
 
 // Settings menu class
@@ -213,18 +216,20 @@ extern LGFX_Sprite deviationDiamond;
 extern LGFX_Sprite headingBox;
 extern LGFX_Sprite gsBox;
 
-// TwoWire myI2C(1);
 // Pin definitions for ESP32 - different pins based on screen type
 #ifdef USE_GUITION_SCREEN
-#define I2C_SDA_PIN 1  // SDA pin for Guition screen (GPIO1)
-#define I2C_SCL_PIN 2  // SCL pin for Guition screen (GPIO2)
-#define INT_PIN     40 // Interrupt pin from RP2040 (GPI40)
+// GPIO pins from SD card reader via piggyback board
+#define POWER_BUTTON_PIN   42 // Power button (GPIO42)
+#define ENCODER_BUTTON_PIN 47 // Encoder button (GPIO47)
+#define ENCODER_A_PIN      48 // Encoder A Pin (GPIO48)
+#define ENCODER_B_PIN      41 // Encoder B Pin (GPIO41)
 #else
-#define I2C_SDA_PIN 15 // SDA pin (GPIO15)
-#define I2C_SCL_PIN 7  // SCL pin (GPIO7)
-#define INT_PIN     16 // Interrupt pin from RP2040 (GPIO16)
-#endif
+// Legacy I2C pins for non-Guition setups
+#define I2C_SDA_PIN 15   // SDA pin (GPIO15)
+#define I2C_SCL_PIN 7    // SCL pin (GPIO7)
+#define INT_PIN     16   // Interrupt pin from RP2040 (GPIO16)
 #define RP2040_ADDR 0x08 // RP2040 I2C slave address
+#endif
 
 // Button codes from the rp2040
 enum ButtonEventType : uint8_t {
@@ -235,23 +240,21 @@ enum ButtonEventType : uint8_t {
     BUTTON_RELEASED     = 4
 };
 
-// G5_Hardware class - manages I2C encoder interface and other hardware
+// G5_Hardware class - manages GPIO-based encoder interface and hardware
 class G5_Hardware
 {
 public:
     G5_Hardware() = default;
 
-    // Called from interrupt handler lambda when RP2040 signals data available
-    void setDataAvailable()
-    {
-        dataAvailable = true;
-    }
+#ifdef USE_GUITION_SCREEN
+    // Initialize GPIO-based encoder and buttons
+    void init();
 
-    // Read data from RP2040 and return true if new data was available
+    // Update encoder and button states (call this regularly in loop)
+    void update();
+
+    // Read data and return true if new data was available
     bool readEncoderData(int8_t &outDelta, int8_t &outEncButton, int8_t &outExtraButton);
-
-    // Check if data is ready to be read
-    bool hasData() const { return dataAvailable; }
 
     // Get accumulated encoder value (total rotation since power-on)
     int getEncoderValue() const { return encoderValue; }
@@ -260,7 +263,45 @@ public:
     int getEncoderButton() const { return encoderButton; }
     int getExtraButton() const { return extraButton; }
 
-    // Control LED on RP2040
+    // LED control (no-op for GPIO version)
+    void setLedState(bool state) {}
+
+private:
+    // ESP32Encoder library instance
+    ESP32Encoder encoder;
+
+    // State tracking
+    int     encoderValue     = 0;
+    int     encoderButton    = 0;
+    int     extraButton      = 0;
+    int64_t lastEncoderCount = 0;
+
+    // Button state tracking
+    volatile bool powerButtonState         = false;
+    volatile bool encoderButtonState       = false;
+    volatile bool lastPowerButtonState     = false;
+    volatile bool lastEncoderButtonState   = false;
+    unsigned long powerButtonPressTime     = 0;
+    unsigned long encoderButtonPressTime   = 0;
+    bool          powerButtonLongPressed   = false;
+    bool          encoderButtonLongPressed = false;
+
+    // Debouncing
+    unsigned long              lastButtonUpdate = 0;
+    static const unsigned long DEBOUNCE_DELAY   = 5;    // 5ms debounce
+    static const unsigned long LONG_PRESS_TIME  = 1000; // 1 second for long press
+
+    // Button reading helper
+    void updateButtons();
+
+#else
+    // Legacy I2C implementation for non-Guition setups
+    void setDataAvailable() { dataAvailable = true; }
+    bool readEncoderData(int8_t &outDelta, int8_t &outEncButton, int8_t &outExtraButton);
+    bool hasData() const { return dataAvailable; }
+    int  getEncoderValue() const { return encoderValue; }
+    int  getEncoderButton() const { return encoderButton; }
+    int  getExtraButton() const { return extraButton; }
     void setLedState(bool state);
 
 private:
@@ -268,6 +309,7 @@ private:
     int           encoderValue  = 0;
     int           encoderButton = 0;
     int           extraButton   = 0;
+#endif
 };
 
 // Global hardware interface instance
@@ -363,11 +405,11 @@ public:
         createMenuItems();
         currentState     = MenuState::BROWSING;
         currentHighlight = 0;
-        while (currentHighlight < menuItems.size() && 
-            !menuItems[currentHighlight]->isVisible()) {
-                currentHighlight++;
-            }
-            if (currentHighlight >= menuItems.size()) currentHighlight = 0;
+        while (currentHighlight < menuItems.size() &&
+               !menuItems[currentHighlight]->isVisible()) {
+            currentHighlight++;
+        }
+        if (currentHighlight >= menuItems.size()) currentHighlight = 0;
     }
 
     bool setActive(bool isActive)
@@ -398,7 +440,7 @@ public:
         if (currentState == MenuState::BROWSING) {
             // Make sure current item is visible
             if (currentHighlight >= menuItems.size() || !menuItems[currentHighlight]->isVisible()) {
-                return;   // Shouldn't happen...
+                return; // Shouldn't happen...
             }
             menuItems[currentHighlight]->onEncoderPress();
 
@@ -510,7 +552,7 @@ public:
         int menuSize = (targetSprite->width() - outlineWidth * 2 - itemSpacing * 3) / itemWidth;
 
         // Visible items
-        int visibleItemCount = getVisibleItemCount();
+        int visibleItemCount    = getVisibleItemCount();
         int currentVisibleIndex = getVisibleIndex(currentHighlight);
 
         // Draw menu background directly on target sprite
@@ -525,10 +567,10 @@ public:
         //      Serial.printf("cHi: %d, cSPo: %d\n", currentHighlight, currentStartPos);
 
         // Draw visible menu items (up to menuSize + 1)
-        int visibleDrawn = 0;
+        int visibleDrawn   = 0;
         int visibleSkipped = 0;
 
-        for (int i = 0; i <menuItems.size() && visibleDrawn < menuSize; i++) {
+        for (int i = 0; i < menuItems.size() && visibleDrawn < menuSize; i++) {
             if (!menuItems[i]->isVisible()) continue;
 
             // Skip items before scroll
